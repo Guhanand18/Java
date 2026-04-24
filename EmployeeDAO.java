@@ -1,23 +1,20 @@
 package com.bnpparibas.dao;
 
-import com.bnpparibas.model.Employee;
-import com.bnpparibas.util.HibernateUtil;
+import java.util.List;
+import java.util.Date;
 
 import org.hibernate.Session;
 import org.hibernate.Transaction;
-import org.hibernate.Query;   // ✅ Hibernate 4.3
-import org.hibernate.exception.ConstraintViolationException;
 
-import java.util.Date;
-import java.util.List;
+import com.bnpparibas.model.Employee;
+import com.bnpparibas.util.HibernateUtil;
 
 public class EmployeeDAO {
 
-    // ================= CREATE =================
+    // ✅ CREATE
     public String createEmployee(Employee emp) {
 
-        if (emp == null || emp.getEmpId() == null || emp.getEmpId().trim().isEmpty()) {
-            System.err.println("[EmployeeDAO] INSERT FAILED - empId missing");
+        if (emp == null || emp.getEmpId() == null || emp.getEmpId().isEmpty()) {
             return null;
         }
 
@@ -27,36 +24,15 @@ public class EmployeeDAO {
         try {
             session = HibernateUtil.getSessionFactory().openSession();
             tx = session.beginTransaction();
-
-            // Check duplicate EMP_ID
-            Query query = session.createQuery(
-                    "FROM Employee WHERE empId = :eid"
-            );
-
-            query.setParameter("eid", emp.getEmpId());
-
-            Employee existing = (Employee) query.uniqueResult();
-
-            if (existing != null) {
-                System.err.println("[EmployeeDAO] Duplicate EMP_ID (rejected): " + emp.getEmpId());
-                tx.rollback();
-                return null;
-            }
 
             session.save(emp);
+
             tx.commit();
-
             return emp.getEmpId();
-
-        } catch (ConstraintViolationException dup) {
-            if (tx != null) tx.rollback();
-            System.err.println("[EmployeeDAO] Constraint duplicate EMP_ID: " + emp.getEmpId());
-            return null;
 
         } catch (Exception e) {
             if (tx != null) tx.rollback();
-            System.err.println("[EmployeeDAO] INSERT FAILED for empId=" + emp.getEmpId());
-            e.printStackTrace();
+            System.out.println("Error saving employee: " + e.getMessage());
             return null;
 
         } finally {
@@ -64,10 +40,8 @@ public class EmployeeDAO {
         }
     }
 
-    // ================= UPDATE IMPORT INFO =================
+    // ✅ UPDATE IMPORT INFO
     public void updateImportInfo(Employee emp) {
-
-        if (emp == null || emp.getEmpId() == null) return;
 
         Session session = null;
         Transaction tx = null;
@@ -76,65 +50,98 @@ public class EmployeeDAO {
             session = HibernateUtil.getSessionFactory().openSession();
             tx = session.beginTransaction();
 
-            Query query = session.createQuery(
-                    "UPDATE Employee SET importId = :impId, filename = :fn WHERE empId = :eid"
-            );
-
-            query.setParameter("impId", emp.getImportId());
-            query.setParameter("fn", emp.getFilename());
-            query.setParameter("eid", emp.getEmpId());
-
-            query.executeUpdate();
+            session.createQuery(
+                    "UPDATE Employee SET importId = :impId, filename = :fn WHERE empId = :id")
+                    .setParameter("impId", emp.getImportId())
+                    .setParameter("fn", emp.getFilename())
+                    .setParameter("id", emp.getEmpId())
+                    .executeUpdate();
 
             tx.commit();
 
         } catch (Exception e) {
             if (tx != null) tx.rollback();
-            System.err.println("[EmployeeDAO] updateImportInfo FAILED for empId=" + emp.getEmpId());
-            e.printStackTrace();
+            System.out.println("Update error: " + e.getMessage());
 
         } finally {
             if (session != null) session.close();
         }
     }
 
-    // ================= LIST ALL =================
-    public List<Employee> listAll() {
+    // ✅ GET ALL
+    @SuppressWarnings("unchecked")
+    public List<Employee> getAllEmployees() {
+
+        Session session = null;
+
+        try {
+            session = HibernateUtil.getSessionFactory().openSession();
+            return session.createQuery("FROM Employee").list();
+
+        } finally {
+            if (session != null) session.close();
+        }
+    }
+
+    // ✅ SEARCH
+    @SuppressWarnings("unchecked")
+    public List<Employee> searchEmployee(String keyword) {
 
         Session session = null;
 
         try {
             session = HibernateUtil.getSessionFactory().openSession();
 
-            Query query = session.createQuery("FROM Employee");
-
-            List<Employee> list = query.list();
-
-            return list;
+            return session.createQuery(
+                    "FROM Employee WHERE firstName LIKE :k OR lastName LIKE :k OR empId LIKE :k")
+                    .setParameter("k", "%" + keyword + "%")
+                    .list();
 
         } finally {
             if (session != null) session.close();
         }
     }
 
-    // ================= DUPLICATE CHECK =================
+    // ✅ DELETE
+    public void deleteEmployee(String empId) {
+
+        Session session = null;
+        Transaction tx = null;
+
+        try {
+            session = HibernateUtil.getSessionFactory().openSession();
+            tx = session.beginTransaction();
+
+            Employee emp = session.get(Employee.class, empId);
+
+            if (emp != null) {
+                session.delete(emp);
+            }
+
+            tx.commit();
+
+        } catch (Exception e) {
+            if (tx != null) tx.rollback();
+            System.out.println("Delete error: " + e.getMessage());
+
+        } finally {
+            if (session != null) session.close();
+        }
+    }
+
+    // ✅ DUPLICATE CHECK
     public boolean existsByDobAndPhone(Date dob, String phone) {
 
-        if (dob == null || phone == null) return false;
-
         Session session = null;
 
         try {
             session = HibernateUtil.getSessionFactory().openSession();
 
-            Query query = session.createQuery(
-                    "select count(e) from Employee e where e.dob = :d and e.phone = :p"
-            );
-
-            query.setParameter("d", dob);
-            query.setParameter("p", phone);
-
-            Long count = (Long) query.uniqueResult();
+            Long count = (Long) session.createQuery(
+                    "select count(e) from Employee e where e.dob = :d and e.phone = :p")
+                    .setParameter("d", dob)
+                    .setParameter("p", phone)
+                    .uniqueResult();
 
             return count != null && count > 0;
 
