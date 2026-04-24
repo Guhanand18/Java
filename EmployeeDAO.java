@@ -5,7 +5,7 @@ import com.bnpparibas.util.HibernateUtil;
 
 import org.hibernate.Session;
 import org.hibernate.Transaction;
-import org.hibernate.query.Query;
+import org.hibernate.Query;   // ✅ Hibernate 4.3
 import org.hibernate.exception.ConstraintViolationException;
 
 import java.util.Date;
@@ -29,10 +29,13 @@ public class EmployeeDAO {
             tx = session.beginTransaction();
 
             // Check duplicate EMP_ID
-            Employee existing = session.createQuery(
-                    "FROM Employee WHERE empId = :eid", Employee.class)
-                    .setParameter("eid", emp.getEmpId())
-                    .uniqueResult();
+            Query query = session.createQuery(
+                    "FROM Employee WHERE empId = :eid"
+            );
+
+            query.setParameter("eid", emp.getEmpId());
+
+            Employee existing = (Employee) query.uniqueResult();
 
             if (existing != null) {
                 System.err.println("[EmployeeDAO] Duplicate EMP_ID (rejected): " + emp.getEmpId());
@@ -73,12 +76,15 @@ public class EmployeeDAO {
             session = HibernateUtil.getSessionFactory().openSession();
             tx = session.beginTransaction();
 
-            session.createQuery(
-                    "UPDATE Employee SET importId = :impId, filename = :fn WHERE empId = :eid")
-                    .setParameter("impId", emp.getImportId())
-                    .setParameter("fn", emp.getFilename())
-                    .setParameter("eid", emp.getEmpId())
-                    .executeUpdate();
+            Query query = session.createQuery(
+                    "UPDATE Employee SET importId = :impId, filename = :fn WHERE empId = :eid"
+            );
+
+            query.setParameter("impId", emp.getImportId());
+            query.setParameter("fn", emp.getFilename());
+            query.setParameter("eid", emp.getEmpId());
+
+            query.executeUpdate();
 
             tx.commit();
 
@@ -100,8 +106,11 @@ public class EmployeeDAO {
         try {
             session = HibernateUtil.getSessionFactory().openSession();
 
-            Query<Employee> query = session.createQuery("FROM Employee", Employee.class);
-            return query.list();
+            Query query = session.createQuery("FROM Employee");
+
+            List<Employee> list = query.list();
+
+            return list;
 
         } finally {
             if (session != null) session.close();
@@ -118,12 +127,14 @@ public class EmployeeDAO {
         try {
             session = HibernateUtil.getSessionFactory().openSession();
 
-            Long count = session.createQuery(
-                    "select count(e) from Employee e where e.dob = :d and e.phone = :p",
-                    Long.class)
-                    .setParameter("d", dob)
-                    .setParameter("p", phone)
-                    .uniqueResult();
+            Query query = session.createQuery(
+                    "select count(e) from Employee e where e.dob = :d and e.phone = :p"
+            );
+
+            query.setParameter("d", dob);
+            query.setParameter("p", phone);
+
+            Long count = (Long) query.uniqueResult();
 
             return count != null && count > 0;
 
