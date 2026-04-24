@@ -1,8 +1,9 @@
 package com.bnpparibas.ui;
 
 import javax.swing.*;
+
 import org.hibernate.Session;
-import org.hibernate.query.Query;
+import org.hibernate.Query;   // ✅ Hibernate 4.3
 
 import com.bnpparibas.model.Employee;
 import com.bnpparibas.util.HibernateUtil;
@@ -25,6 +26,7 @@ public class EmployeeTableUI extends JFrame {
     private int totalPages = 0;
 
     public EmployeeTableUI(String currentUser) {
+
         this.currentUser = currentUser;
 
         setTitle("Employee Management");
@@ -33,7 +35,6 @@ public class EmployeeTableUI extends JFrame {
         setLocationRelativeTo(null);
         setDefaultCloseOperation(EXIT_ON_CLOSE);
 
-        // Panels
         filterPanel = new FilterPanel();
         actionPanel = new ActionPanel();
         tablePanel = new TablePanel();
@@ -46,38 +47,49 @@ public class EmployeeTableUI extends JFrame {
         add(navigationPanel, BorderLayout.SOUTH);
 
         attachActions();
-
         loadData();
 
         setVisible(true);
     }
 
-    // ==============================
-    // ACTIONS
-    // ==============================
+    // ================= ACTIONS =================
     private void attachActions() {
 
-        actionPanel.getSearchButton().addActionListener(e -> {
-            currentPage = 0;
-            loadData();
+        actionPanel.getSearchButton().addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent e) {
+                currentPage = 0;
+                loadData();
+            }
         });
 
-        actionPanel.getClearButton().addActionListener(e -> {
-            filterPanel.clearAll();
-            currentPage = 0;
-            loadData();
+        actionPanel.getClearButton().addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent e) {
+                filterPanel.clearAll();
+                currentPage = 0;
+                loadData();
+            }
         });
 
-        actionPanel.getExportButton().addActionListener(e -> exportCSV());
-
-        navigationPanel.getPrevButton().addActionListener(e -> {
-            currentPage--;
-            loadData();
+        actionPanel.getExportButton().addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent e) {
+                exportCSV();
+            }
         });
 
-        navigationPanel.getNextButton().addActionListener(e -> {
-            currentPage++;
-            loadData();
+        navigationPanel.getPrevButton().addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent e) {
+                if (currentPage > 0) {
+                    currentPage--;
+                    loadData();
+                }
+            }
+        });
+
+        navigationPanel.getNextButton().addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent e) {
+                currentPage++;
+                loadData();
+            }
         });
 
         // Double click → Edit
@@ -92,9 +104,7 @@ public class EmployeeTableUI extends JFrame {
         });
     }
 
-    // ==============================
-    // LOAD DATA (Pagination + Filter)
-    // ==============================
+    // ================= LOAD DATA =================
     private void loadData() {
 
         Session session = HibernateUtil.getSessionFactory().openSession();
@@ -106,8 +116,8 @@ public class EmployeeTableUI extends JFrame {
 
         String where = crit.where.toString();
 
-        Query<Employee> q = session.createQuery(baseQuery + where, Employee.class);
-        Query<Long> countQ = session.createQuery(countQuery + where, Long.class);
+        Query q = session.createQuery(baseQuery + where);
+        Query countQ = session.createQuery(countQuery + where);
 
         for (int i = 0; i < crit.params.size(); i++) {
             q.setParameter(i + 1, crit.params.get(i));
@@ -115,14 +125,16 @@ public class EmployeeTableUI extends JFrame {
         }
 
         // total count
-        long total = countQ.uniqueResult();
+        Long totalObj = (Long) countQ.uniqueResult();
+        long total = (totalObj == null) ? 0 : totalObj;
+
         totalPages = (int) Math.ceil((double) total / pageSize);
 
         // pagination
         q.setFirstResult(currentPage * pageSize);
         q.setMaxResults(pageSize);
 
-        List<Employee> rows = q.list();
+        List<Employee> rows = q.list();   // ⚠ raw list
 
         tablePanel.refresh(rows);
         navigationPanel.update(currentPage, totalPages);
@@ -130,9 +142,7 @@ public class EmployeeTableUI extends JFrame {
         session.close();
     }
 
-    // ==============================
-    // CSV EXPORT
-    // ==============================
+    // ================= EXPORT =================
     private void exportCSV() {
 
         JFileChooser chooser = new JFileChooser();
@@ -161,23 +171,22 @@ public class EmployeeTableUI extends JFrame {
 
         FilterPanel.HqlCriteria crit = filterPanel.buildCriteria();
 
-        String query = "FROM Employee e " + crit.where.toString();
+        String queryStr = "FROM Employee e " + crit.where.toString();
 
-        Query<Employee> q = session.createQuery(query, Employee.class);
+        Query q = session.createQuery(queryStr);
 
         for (int i = 0; i < crit.params.size(); i++) {
             q.setParameter(i + 1, crit.params.get(i));
         }
 
         List<Employee> list = q.list();
+
         session.close();
 
         return list;
     }
 
-    // ==============================
-    // REFRESH AFTER EDIT
-    // ==============================
+    // ================= REFRESH =================
     public void refreshAfterEdit() {
         loadData();
     }
