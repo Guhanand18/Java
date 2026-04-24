@@ -44,35 +44,17 @@ public class LoginUI extends JFrame {
         add(resetBtn);
         add(signupBtn);
 
-        // Show password
         showPassword.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent e) {
-                if (showPassword.isSelected()) {
-                    passwordField.setEchoChar((char) 0);
-                } else {
-                    passwordField.setEchoChar('*');
-                }
+                passwordField.setEchoChar(showPassword.isSelected() ? (char) 0 : '*');
             }
         });
 
-        // Login
         loginBtn.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent e) {
 
                 String username = usernameField.getText().trim();
                 String password = new String(passwordField.getPassword()).trim();
-
-                if (username.isEmpty() || password.isEmpty()) {
-                    JOptionPane.showMessageDialog(LoginUI.this,
-                            "Username and password required");
-                    return;
-                }
-
-                if (password.length() < 6) {
-                    JOptionPane.showMessageDialog(LoginUI.this,
-                            "Password must be at least 6 characters");
-                    return;
-                }
 
                 LoginService service = new LoginService();
                 User user = service.login(username, password);
@@ -83,22 +65,18 @@ public class LoginUI extends JFrame {
                     return;
                 }
 
-                new EmployeeTableUI(user.getUsername(), user.getRole());
+                new EmployeeTableUI(user.getUsername()); // ✅ FIXED
                 dispose();
             }
         });
 
-        // Reset
         resetBtn.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent e) {
                 usernameField.setText("");
                 passwordField.setText("");
-                showPassword.setSelected(false);
-                passwordField.setEchoChar('*');
             }
         });
 
-        // Signup
         signupBtn.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent e) {
                 new SignupUI();
