@@ -7,6 +7,7 @@ import com.bnpparibas.util.HibernateUtil;
 
 import org.hibernate.Session;
 import org.hibernate.Transaction;
+import org.hibernate.Query;   // ✅ Hibernate 4.3
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -17,9 +18,6 @@ public class AuditDAO {
 
     private static final SimpleDateFormat DATE_FMT = new SimpleDateFormat("yyyy-MM-dd");
 
-    /**
-     * MAIN METHOD → writes audit
-     */
     public void writeAudit(Employee before, Employee after, String performedBy) {
 
         Session session = null;
@@ -29,7 +27,6 @@ public class AuditDAO {
             session = HibernateUtil.getSessionFactory().openSession();
             tx = session.beginTransaction();
 
-            // 1️⃣ Get next version
             int version = 0;
             Audit latest = getLatestAuditForEmp(after.getEmpId());
 
@@ -37,7 +34,6 @@ public class AuditDAO {
                 version = latest.getVersionNumber() + 1;
             }
 
-            // 2️⃣ Create audit header
             Audit audit = new Audit(
                     after.getEmpId(),
                     performedBy,
@@ -47,8 +43,7 @@ public class AuditDAO {
 
             Long auditId = (Long) session.save(audit);
 
-            // 3️⃣ Compare fields manually (simple logic)
-            List<AuditDetail> details = new ArrayList<>();
+            List<AuditDetail> details = new ArrayList<AuditDetail>();
 
             checkChange(details, auditId, "DEPARTMENT", before.getDepartment(), after.getDepartment());
             checkChange(details, auditId, "POSITION", before.getPosition(), after.getPosition());
@@ -56,12 +51,11 @@ public class AuditDAO {
             checkChange(details, auditId, "PHONE", before.getPhone(), after.getPhone());
             checkChange(details, auditId, "ADDRESS", before.getAddress(), after.getAddress());
 
-            // DOB special handling
             String oldDob = before.getDob() == null ? "" : DATE_FMT.format(before.getDob());
             String newDob = after.getDob() == null ? "" : DATE_FMT.format(after.getDob());
+
             checkChange(details, auditId, "DOB", oldDob, newDob);
 
-            // 4️⃣ Save details
             for (AuditDetail d : details) {
                 session.save(d);
             }
@@ -78,9 +72,6 @@ public class AuditDAO {
         }
     }
 
-    /**
-     * SIMPLE helper → checks change
-     */
     private void checkChange(List<AuditDetail> list, Long auditId,
                              String field, String oldVal, String newVal) {
 
@@ -92,9 +83,6 @@ public class AuditDAO {
         }
     }
 
-    /**
-     * Get all audits for employee
-     */
     public List<Audit> getAuditsForEmp(String empId) {
 
         Session session = null;
@@ -102,28 +90,30 @@ public class AuditDAO {
         try {
             session = HibernateUtil.getSessionFactory().openSession();
 
-            return session.createQuery(
-                    "FROM Audit WHERE empId = :e ORDER BY versionNumber DESC",
-                    Audit.class
-            ).setParameter("e", empId).list();
+            Query query = session.createQuery(
+                    "FROM Audit WHERE empId = :e ORDER BY versionNumber DESC"
+            );
+
+            query.setParameter("e", empId);
+
+            List<Audit> list = query.list();
+
+            return list;
 
         } finally {
             if (session != null) session.close();
         }
     }
 
-    /**
-     * Get latest audit
-     */
     public Audit getLatestAuditForEmp(String empId) {
 
         List<Audit> list = getAuditsForEmp(empId);
-        return (list == null || list.isEmpty()) ? null : list.get(0);
+
+        if (list == null || list.isEmpty()) return null;
+
+        return list.get(0);
     }
 
-    /**
-     * Get audit details
-     */
     public List<AuditDetail> getDetailsForAudit(Long auditId) {
 
         Session session = null;
@@ -131,10 +121,15 @@ public class AuditDAO {
         try {
             session = HibernateUtil.getSessionFactory().openSession();
 
-            return session.createQuery(
-                    "FROM AuditDetail WHERE auditId = :a",
-                    AuditDetail.class
-            ).setParameter("a", auditId).list();
+            Query query = session.createQuery(
+                    "FROM AuditDetail WHERE auditId = :a"
+            );
+
+            query.setParameter("a", auditId);
+
+            List<AuditDetail> list = query.list();
+
+            return list;
 
         } finally {
             if (session != null) session.close();
