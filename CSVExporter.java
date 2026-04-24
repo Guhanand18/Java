@@ -20,12 +20,12 @@ public class CsvExporter {
 
         Session session = HibernateUtil.getSessionFactory().openSession();
 
-        String hql = "from Employee e " + crit.where + " order by e.empId";
+        String hql = "FROM Employee e " + crit.where + " ORDER BY e.empId";
 
         Query query = session.createQuery(hql);
 
         for (int i = 0; i < crit.params.size(); i++) {
-            query.setParameter(i, crit.params.get(i));
+            query.setParameter(i + 1, crit.params.get(i)); // ✅ IMPORTANT (index starts from 1)
         }
 
         List<Employee> rows = query.list();
@@ -41,21 +41,38 @@ public class CsvExporter {
 
         if (chooser.showSaveDialog(parent) != JFileChooser.APPROVE_OPTION) return;
 
-        try {
-            PrintWriter pw = new PrintWriter(chooser.getSelectedFile());
+        File file = chooser.getSelectedFile();
 
-            pw.println("Emp_ID,First Name");
+        try {
+            PrintWriter pw = new PrintWriter(file);
+
+            // Header
+            pw.println("Emp_ID,First Name,Last Name,Department,Position,Email,Phone,Address,DOB,Hire Date");
 
             for (Employee e : rows) {
-                pw.println(e.getEmpId() + "," + e.getFirstName());
+
+                pw.printf("%s,%s,%s,%s,%s,%s,%s,%s,%s,%s%n",
+                        e.getEmpId(),
+                        e.getFirstName(),
+                        e.getLastName(),
+                        e.getDepartment(),
+                        e.getPosition(),
+                        e.getEmail(),
+                        e.getPhone(),
+                        e.getAddress(),
+                        e.getDob() == null ? "" : DATE_FMT.format(e.getDob()),
+                        e.getHireDate() == null ? "" : DATE_FMT.format(e.getHireDate())
+                );
             }
 
             pw.close();
 
-            JOptionPane.showMessageDialog(parent, "Export successful");
+            JOptionPane.showMessageDialog(parent,
+                    "Export successful: " + rows.size() + " records");
 
-        } catch (Exception e) {
-            JOptionPane.showMessageDialog(parent, "Export error");
+        } catch (Exception ex) {
+            JOptionPane.showMessageDialog(parent,
+                    "Export failed: " + ex.getMessage());
         }
     }
 }
