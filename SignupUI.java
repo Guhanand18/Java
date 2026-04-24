@@ -3,24 +3,32 @@ package com.bnpparibas.ui;
 import javax.swing.*;
 
 import com.bnpparibas.model.User;
-import com.bnpparibas.service.LoginService;
+import com.bnpparibas.util.HibernateUtil;
+
+import org.hibernate.Session;
+import org.hibernate.Transaction;
+import org.hibernate.query.Query;
 
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.util.List;
 
-public class LoginUI extends JFrame {
+public class SignupUI extends JFrame {
 
     JTextField usernameField;
     JPasswordField passwordField;
-    JButton loginBtn, resetBtn, signupBtn;
+
+    JCheckBox viewBox, editBox, validateBox;
     JCheckBox showPassword;
 
-    public LoginUI() {
+    JButton signupBtn, backBtn;
 
-        setTitle("Login");
-        setSize(400, 250);
-        setLayout(new GridLayout(5, 2, 10, 10));
+    public SignupUI() {
+
+        setTitle("Signup");
+        setSize(400, 300);
+        setLayout(new GridLayout(6, 2, 10, 10));
         setLocationRelativeTo(null);
         setDefaultCloseOperation(EXIT_ON_CLOSE);
 
@@ -36,13 +44,24 @@ public class LoginUI extends JFrame {
         add(showPassword);
         add(new JLabel(""));
 
-        loginBtn = new JButton("Login");
-        resetBtn = new JButton("Reset");
-        signupBtn = new JButton("Signup");
+        add(new JLabel("Roles:"));
+        JPanel rolePanel = new JPanel();
 
-        add(loginBtn);
-        add(resetBtn);
+        viewBox = new JCheckBox("VIEW");
+        editBox = new JCheckBox("EDIT");
+        validateBox = new JCheckBox("VALIDATE");
+
+        rolePanel.add(viewBox);
+        rolePanel.add(editBox);
+        rolePanel.add(validateBox);
+
+        add(rolePanel);
+
+        signupBtn = new JButton("Signup");
+        backBtn = new JButton("Back");
+
         add(signupBtn);
+        add(backBtn);
 
         // Show password
         showPassword.addActionListener(new ActionListener() {
@@ -55,61 +74,84 @@ public class LoginUI extends JFrame {
             }
         });
 
-        // Login
-        loginBtn.addActionListener(new ActionListener() {
+        // Back
+        backBtn.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent e) {
-
-                String username = usernameField.getText().trim();
-                String password = new String(passwordField.getPassword()).trim();
-
-                if (username.isEmpty() || password.isEmpty()) {
-                    JOptionPane.showMessageDialog(LoginUI.this,
-                            "Username and password required");
-                    return;
-                }
-
-                if (password.length() < 6) {
-                    JOptionPane.showMessageDialog(LoginUI.this,
-                            "Password must be at least 6 characters");
-                    return;
-                }
-
-                LoginService service = new LoginService();
-                User user = service.login(username, password);
-
-                if (user == null) {
-                    JOptionPane.showMessageDialog(LoginUI.this,
-                            "Invalid credentials or already logged in");
-                    return;
-                }
-
-                new EmployeeTableUI(user.getUsername(), user.getRole());
+                new LoginUI();
                 dispose();
-            }
-        });
-
-        // Reset
-        resetBtn.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-                usernameField.setText("");
-                passwordField.setText("");
-                showPassword.setSelected(false);
-                passwordField.setEchoChar('*');
             }
         });
 
         // Signup
         signupBtn.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent e) {
-                new SignupUI();
+
+                String username = usernameField.getText().trim();
+                String password = new String(passwordField.getPassword()).trim();
+
+                if (username.isEmpty() || password.isEmpty()) {
+                    JOptionPane.showMessageDialog(SignupUI.this,
+                            "All fields are required");
+                    return;
+                }
+
+                if (password.length() < 6) {
+                    JOptionPane.showMessageDialog(SignupUI.this,
+                            "Password must be at least 6 characters");
+                    return;
+                }
+
+                String role = "";
+
+                if (viewBox.isSelected()) role += "VIEW,";
+                if (editBox.isSelected()) role += "EDIT,";
+                if (validateBox.isSelected()) role += "VALIDATE,";
+
+                if (role.isEmpty()) {
+                    JOptionPane.showMessageDialog(SignupUI.this,
+                            "Select at least one role");
+                    return;
+                }
+
+                role = role.substring(0, role.length() - 1);
+
+                // Check duplicate
+                Session checkSession = HibernateUtil.getSessionFactory().openSession();
+
+                Query<User> query = checkSession.createQuery(
+                        "FROM User WHERE username = :u", User.class);
+                query.setParameter("u", username);
+
+                List<User> list = query.list();
+                checkSession.close();
+
+                if (!list.isEmpty()) {
+                    JOptionPane.showMessageDialog(SignupUI.this,
+                            "Username already exists");
+                    return;
+                }
+
+                // Save user
+                Session session = HibernateUtil.getSessionFactory().openSession();
+                Transaction tx = session.beginTransaction();
+
+                User user = new User();
+                user.setUsername(username);
+                user.setPassword(password);
+                user.setRole(role);
+
+                session.save(user);
+                tx.commit();
+                session.close();
+
+                JOptionPane.showMessageDialog(SignupUI.this,
+                        "User registered successfully");
+
+                new LoginUI();
                 dispose();
             }
         });
 
         setVisible(true);
-    }
-
-    public static void main(String[] args) {
-        new LoginUI();
     }
 }
