@@ -4,7 +4,7 @@ import com.bnpparibas.model.Employee;
 import com.bnpparibas.util.HibernateUtil;
 
 import org.hibernate.Session;
-import org.hibernate.query.Query;
+import org.hibernate.Query;   // ✅ Hibernate 4.3
 
 import javax.swing.*;
 import java.io.File;
@@ -21,16 +21,18 @@ public class CsvExporter {
         Session session = HibernateUtil.getSessionFactory().openSession();
 
         String hql = "from Employee e " + crit.where + " order by e.empId";
-        Query<Employee> query = session.createQuery(hql, Employee.class);
+
+        Query query = session.createQuery(hql);   // ✅ no generics
 
         for (int i = 0; i < crit.params.size(); i++) {
             query.setParameter(i, crit.params.get(i));
         }
 
-        List<Employee> rows = query.list();
+        List<Employee> rows = query.list();   // ⚠ raw list
+
         session.close();
 
-        if (rows.isEmpty()) {
+        if (rows == null || rows.isEmpty()) {
             JOptionPane.showMessageDialog(parent,
                     "No data matches the current filter - nothing to export.",
                     "Export", JOptionPane.INFORMATION_MESSAGE);
@@ -45,12 +47,14 @@ public class CsvExporter {
 
         File outFile = chooser.getSelectedFile();
 
-        try (PrintWriter pw = new PrintWriter(outFile)) {
+        try {
+            PrintWriter pw = new PrintWriter(outFile);
 
             // Header
             pw.println("Emp_ID,First Name,Last Name,Department,Position,Email,Phone,Address,DOB,Hire Date,Status,Created By,Import ID,File Name");
 
             for (Employee e : rows) {
+
                 pw.printf("%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s%n",
                         esc(e.getEmpId()),
                         esc(e.getFirstName()),
@@ -69,6 +73,8 @@ public class CsvExporter {
                 );
             }
 
+            pw.close();
+
             JOptionPane.showMessageDialog(parent,
                     "Export successful! " + rows.size() + " rows written to:\n" + outFile.getAbsolutePath(),
                     "Export", JOptionPane.INFORMATION_MESSAGE);
@@ -80,13 +86,17 @@ public class CsvExporter {
         }
     }
 
-    // CSV escape helper
+    // ================= CSV ESCAPE =================
     private static String esc(String v) {
+
         if (v == null) return "";
+
         String e = v.replace("\"", "\"\"");
+
         if (e.contains(",") || e.contains("\"") || e.contains("\n") || e.contains("\r")) {
             return "\"" + e + "\"";
         }
+
         return e;
     }
 }
