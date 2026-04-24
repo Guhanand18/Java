@@ -7,7 +7,7 @@ import com.bnpparibas.util.HibernateUtil;
 
 import org.hibernate.Session;
 import org.hibernate.Transaction;
-import org.hibernate.query.Query;
+import org.hibernate.Query;   // ✅ Hibernate 4.3 import
 
 import java.awt.*;
 import java.awt.event.ActionEvent;
@@ -115,14 +115,16 @@ public class SignupUI extends JFrame {
 
                 role = role.substring(0, role.length() - 1);
 
-                // Check duplicate
+                // ================= DUPLICATE CHECK =================
                 Session checkSession = HibernateUtil.getSessionFactory().openSession();
 
-                Query<User> query = checkSession.createQuery(
-                        "FROM User WHERE username = :u", User.class);
+                Query query = checkSession.createQuery(
+                        "FROM User WHERE username = :u"
+                );
+
                 query.setParameter("u", username);
 
-                List<User> list = query.list();
+                List list = query.list();
                 checkSession.close();
 
                 if (!list.isEmpty()) {
@@ -131,7 +133,7 @@ public class SignupUI extends JFrame {
                     return;
                 }
 
-                // Save user
+                // ================= SAVE USER =================
                 Session session = HibernateUtil.getSessionFactory().openSession();
                 Transaction tx = session.beginTransaction();
 
