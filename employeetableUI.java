@@ -3,18 +3,17 @@ package com.bnpparibas.ui;
 import javax.swing.*;
 
 import org.hibernate.Session;
-import org.hibernate.Query;   // ✅ Hibernate 4.3
+import org.hibernate.Query;
 
 import com.bnpparibas.model.Employee;
 import com.bnpparibas.util.HibernateUtil;
 
 import java.awt.*;
-import java.io.File;
 import java.util.List;
 
 public class EmployeeTableUI extends JFrame {
 
-    private final String currentUser;
+    private String currentUser;
 
     private FilterPanel filterPanel;
     private ActionPanel actionPanel;
@@ -22,7 +21,7 @@ public class EmployeeTableUI extends JFrame {
     private NavigationPanel navigationPanel;
 
     private int currentPage = 0;
-    private final int pageSize = 10;
+    private int pageSize = 10;
     private int totalPages = 0;
 
     public EmployeeTableUI(String currentUser) {
@@ -72,7 +71,7 @@ public class EmployeeTableUI extends JFrame {
 
         actionPanel.getExportButton().addActionListener(new java.awt.event.ActionListener() {
             public void actionPerformed(java.awt.event.ActionEvent e) {
-                exportCSV();
+                exportCSV(); // ✅ fixed
             }
         });
 
@@ -87,8 +86,10 @@ public class EmployeeTableUI extends JFrame {
 
         navigationPanel.getNextButton().addActionListener(new java.awt.event.ActionListener() {
             public void actionPerformed(java.awt.event.ActionEvent e) {
-                currentPage++;
-                loadData();
+                if (currentPage < totalPages - 1) {
+                    currentPage++;
+                    loadData();
+                }
             }
         });
 
@@ -111,8 +112,8 @@ public class EmployeeTableUI extends JFrame {
 
         FilterPanel.HqlCriteria crit = filterPanel.buildCriteria();
 
-        String baseQuery = "FROM Employee e";
-        String countQuery = "SELECT COUNT(*) FROM Employee e";
+        String baseQuery = "FROM Employee e ";
+        String countQuery = "SELECT COUNT(*) FROM Employee e ";
 
         String where = crit.where.toString();
 
@@ -120,21 +121,19 @@ public class EmployeeTableUI extends JFrame {
         Query countQ = session.createQuery(countQuery + where);
 
         for (int i = 0; i < crit.params.size(); i++) {
-            q.setParameter(i + 1, crit.params.get(i));
+            q.setParameter(i + 1, crit.params.get(i));      // ✅ correct index
             countQ.setParameter(i + 1, crit.params.get(i));
         }
 
-        // total count
         Long totalObj = (Long) countQ.uniqueResult();
         long total = (totalObj == null) ? 0 : totalObj;
 
         totalPages = (int) Math.ceil((double) total / pageSize);
 
-        // pagination
         q.setFirstResult(currentPage * pageSize);
         q.setMaxResults(pageSize);
 
-        List<Employee> rows = q.list();   // ⚠ raw list
+        List<Employee> rows = q.list();
 
         tablePanel.refresh(rows);
         navigationPanel.update(currentPage, totalPages);
@@ -145,45 +144,7 @@ public class EmployeeTableUI extends JFrame {
     // ================= EXPORT =================
     private void exportCSV() {
 
-        JFileChooser chooser = new JFileChooser();
-        chooser.setSelectedFile(new File("employees.csv"));
-
-        int result = chooser.showSaveDialog(this);
-
-        if (result != JFileChooser.APPROVE_OPTION) return;
-
-        File file = chooser.getSelectedFile();
-
-        try {
-            List<Employee> allData = fetchAllData();
-            CSVExporter.export(file, allData);
-
-            JOptionPane.showMessageDialog(this, "Export successful!");
-
-        } catch (Exception ex) {
-            JOptionPane.showMessageDialog(this, "Export failed: " + ex.getMessage());
-        }
-    }
-
-    private List<Employee> fetchAllData() {
-
-        Session session = HibernateUtil.getSessionFactory().openSession();
-
-        FilterPanel.HqlCriteria crit = filterPanel.buildCriteria();
-
-        String queryStr = "FROM Employee e " + crit.where.toString();
-
-        Query q = session.createQuery(queryStr);
-
-        for (int i = 0; i < crit.params.size(); i++) {
-            q.setParameter(i + 1, crit.params.get(i));
-        }
-
-        List<Employee> list = q.list();
-
-        session.close();
-
-        return list;
+        CsvExporter.export(this, filterPanel.buildCriteria()); // ✅ correct call
     }
 
     // ================= REFRESH =================
