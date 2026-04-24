@@ -5,63 +5,93 @@ import com.bnpparibas.dao.ImportStatsDAO;
 import com.bnpparibas.model.Employee;
 
 import java.io.*;
-import java.nio.charset.StandardCharsets;
-import java.time.LocalDate;
-import java.time.Period;
+import java.text.SimpleDateFormat;
 import java.util.*;
+import java.util.regex.Pattern;
 
 public class FileService {
 
-    private EmployeeDAO employeeDAO = new EmployeeDAO();
-    private ImportStatsDAO statsDAO = new ImportStatsDAO();
+    private final EmployeeDAO employeeDAO = new EmployeeDAO();
+    private final ImportStatsDAO statsDAO = new ImportStatsDAO();
 
-    // ================= ENTRY =================
-    public ImportResult processFile(File file, String user) {
+    private static final SimpleDateFormat DATE_FMT = new SimpleDateFormat("yyyy-MM-dd");
+
+    // ================= MAIN ENTRY =================
+    public ImportResult processFile(File file, String currentUser) {
 
         String name = file.getName().toLowerCase();
 
         if (name.endsWith(".csv")) {
-            return importCsv(file, user);
+            return importCsv(file, currentUser);
         } else if (name.endsWith(".txt")) {
-            return importTxt(file, user);
+            return importTxt(file, currentUser);
+        } else {
+            System.out.println("Unsupported file type");
+            return new ImportResult(0, 0);
         }
-
-        System.out.println("Unsupported file type");
-        return new ImportResult(0, 0);
     }
 
-    // ================= CSV =================
+    // ================= CSV IMPORT =================
     private ImportResult importCsv(File file, String user) {
 
-        int valid = 0, invalid = 0;
-        List<String> badLines = new ArrayList<>();
-        List<Employee> saved = new ArrayList<>();
-        Set<String> duplicateCheck = new HashSet<>();
+        int valid = 0;
+        int invalid = 0;
 
-        try (BufferedReader br = new BufferedReader(
-                new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8))) {
+        List<String> badLines = new ArrayList<>();
+        List<Employee> savedEmployees = new ArrayList<>();
+
+        Set<String> duplicateSet = new HashSet<>();
+
+        try (BufferedReader br = new BufferedReader(new InputStreamReader(
+                new FileInputStream(file)))) {
 
             String line;
 
             while ((line = br.readLine()) != null) {
 
-                if (line.trim().isEmpty() || line.toLowerCase().startsWith("first"))
+                line = line.trim();
+
+                if (line.isEmpty() || line.toLowerCase().startsWith("first"))
                     continue;
 
                 Employee emp = parseCsv(line);
 
-                if (!isValid(emp, duplicateCheck)) {
+                if (emp == null) {
+                    logInvalid("CSV", line, "Parsing failed");
                     invalid++;
                     badLines.add(line);
                     continue;
                 }
 
-                prepareEmployee(emp, user, file.getName());
+                // duplicate inside file
+                if (isDuplicate(emp, duplicateSet)) {
+                    logInvalid("CSV", line, "Duplicate in file");
+                    invalid++;
+                    badLines.add(line);
+                    continue;
+                }
 
-                if (employeeDAO.createEmployee(emp) != null) {
+                // validation + DB duplicate
+                if (!validate(emp)) {
+                    logInvalid("CSV", line, "Validation failed");
+                    invalid++;
+                    badLines.add(line);
+                    continue;
+                }
+
+                // SAVE
+                emp.setEmpId(generateEmpId());
+                emp.setCreatedBy(user);
+                emp.setStatus("NEW");
+                emp.setFilename(file.getName());
+
+                String res = employeeDAO.createEmployee(emp);
+
+                if (res != null) {
                     valid++;
-                    saved.add(emp);
+                    savedEmployees.add(emp);
                 } else {
+                    logInvalid("CSV", line, "DB insert failed");
                     invalid++;
                     badLines.add(line);
                 }
@@ -71,62 +101,67 @@ public class FileService {
             e.printStackTrace();
         }
 
-        Long importId = statsDAO.recordImport(user, valid, invalid);
-
-        for (Employee e : saved) {
-            e.setImportId(importId);
-            employeeDAO.updateImportInfo(e);
-        }
+        statsDAO.recordImport(user, valid, invalid);
 
         return new ImportResult(valid, invalid, badLines);
     }
 
-    // ================= TXT =================
+    // ================= TXT IMPORT =================
     private ImportResult importTxt(File file, String user) {
 
-        int valid = 0, invalid = 0;
-        List<String> badLines = new ArrayList<>();
-        List<Employee> saved = new ArrayList<>();
-        Set<String> duplicateCheck = new HashSet<>();
+        int valid = 0;
+        int invalid = 0;
 
-        try (BufferedReader br = new BufferedReader(
-                new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8))) {
+        List<String> badLines = new ArrayList<>();
+        Set<String> duplicateSet = new HashSet<>();
+
+        try (BufferedReader br = new BufferedReader(new FileReader(file))) {
 
             String line;
 
             while ((line = br.readLine()) != null) {
 
-                if (line.trim().isEmpty()) continue;
+                line = line.trim();
+
+                if (line.isEmpty() || line.toLowerCase().startsWith("first"))
+                    continue;
 
                 Employee emp = parseTxt(line);
 
-                if (!isValid(emp, duplicateCheck)) {
+                if (emp == null) {
                     invalid++;
                     badLines.add(line);
                     continue;
                 }
 
-                prepareEmployee(emp, user, file.getName());
-
-                if (employeeDAO.createEmployee(emp) != null) {
-                    valid++;
-                    saved.add(emp);
-                } else {
+                if (isDuplicate(emp, duplicateSet)) {
                     invalid++;
                     badLines.add(line);
+                    continue;
                 }
+
+                if (!validate(emp)) {
+                    invalid++;
+                    badLines.add(line);
+                    continue;
+                }
+
+                emp.setEmpId(generateEmpId());
+                emp.setCreatedBy(user);
+                emp.setStatus("NEW");
+                emp.setFilename(file.getName());
+
+                String res = employeeDAO.createEmployee(emp);
+
+                if (res != null) valid++;
+                else invalid++;
             }
 
         } catch (Exception e) {
             e.printStackTrace();
         }
 
-        Long importId = statsDAO.recordImport(user, valid, invalid);
-
-        for (Employee e : saved) {
-            e.setImportId(importId);
-            employeeDAO.updateImportInfo(e);
-        }
+        statsDAO.recordImport(user, valid, invalid);
 
         return new ImportResult(valid, invalid, badLines);
     }
@@ -134,117 +169,100 @@ public class FileService {
     // ================= PARSERS =================
     private Employee parseCsv(String line) {
 
-        String[] t = line.split(",");
-
-        if (t.length < 9) return null;
-
-        Employee e = new Employee();
-        e.setFirstName(t[0].trim());
-        e.setLastName(t[1].trim());
-        e.setDepartment(t[2].trim());
-        e.setPosition(t[3].trim());
-        e.setEmail(t[4].trim());
-        e.setPhone(t[5].trim());
-        e.setAddress(t[6].trim());
-        e.setDob(parseDate(t[7]));
-        e.setHireDate(parseDate(t[8]));
-
-        return e;
-    }
-
-    private Employee parseTxt(String line) {
-
-        String[] parts = line.trim().split("\\s+");
-
-        if (parts.length < 9) return null;
-
-        int emailIndex = -1;
-
-        for (int i = 0; i < parts.length; i++) {
-            if (parts[i].contains("@")) {
-                emailIndex = i;
-                break;
-            }
-        }
-
-        if (emailIndex == -1) return null;
-
-        Employee e = new Employee();
-
-        e.setFirstName(parts[0]);
-        e.setLastName(parts[1]);
-        e.setDepartment(parts[2]);
-
-        StringBuilder pos = new StringBuilder();
-        for (int i = 3; i < emailIndex; i++) {
-            pos.append(parts[i]).append(" ");
-        }
-
-        e.setPosition(pos.toString().trim());
-        e.setEmail(parts[emailIndex]);
-        e.setPhone(parts[emailIndex + 1]);
-
-        e.setDob(parseDate(parts[parts.length - 2]));
-        e.setHireDate(parseDate(parts[parts.length - 1]));
-
-        return e;
-    }
-
-    // ================= VALIDATION =================
-    private boolean isValid(Employee e, Set<String> dupSet) {
-
-        if (e == null) return false;
-
-        if (isEmpty(e.getFirstName()) || isEmpty(e.getLastName())) return false;
-        if (isEmpty(e.getDepartment()) || isEmpty(e.getPosition())) return false;
-
-        if (!e.getEmail().matches(".+@.+\\..+")) return false;
-        if (!e.getPhone().matches("[6-9]\\d{9}")) return false;
-
-        if (e.getDob() == null || e.getHireDate() == null) return false;
-
-        if (!isAdult(e.getDob(), e.getHireDate())) return false;
-
-        if (employeeDAO.existsByDobAndPhone(e.getDob(), e.getPhone())) return false;
-
-        String key = e.getDob() + "|" + e.getPhone();
-        if (dupSet.contains(key)) return false;
-
-        dupSet.add(key);
-        return true;
-    }
-
-    // ================= HELPERS =================
-    private void prepareEmployee(Employee e, String user, String fileName) {
-        e.setEmpId(generateEmpId());
-        e.setCreatedby(user);
-        e.setStatus("NEW");
-        e.setFilename(fileName);
-    }
-
-    private boolean isEmpty(String s) {
-        return s == null || s.trim().isEmpty();
-    }
-
-    private Date parseDate(String txt) {
         try {
-            return java.sql.Date.valueOf(LocalDate.parse(txt.trim()));
+            String[] t = line.split(",");
+
+            if (t.length != 8) return null;
+
+            Employee e = new Employee();
+            e.setFirstName(t[0].trim());
+            e.setLastName(t[1].trim());
+            e.setDepartment(t[2].trim());
+            e.setPosition(t[3].trim());
+            e.setEmail(t[4].trim());
+            e.setPhone(t[5].trim());
+            e.setAddress(t[6].trim());
+            e.setDob(parseDate(t[7]));
+
+            return e;
+
         } catch (Exception e) {
             return null;
         }
     }
 
-    private boolean isAdult(Date dob, Date hireDate) {
+    private Employee parseTxt(String line) {
 
-        LocalDate d1 = new java.sql.Date(dob.getTime()).toLocalDate();
-        LocalDate d2 = new java.sql.Date(hireDate.getTime()).toLocalDate();
+        try {
+            String[] t = line.split("\\s+");
 
-        return Period.between(d1, d2).getYears() >= 20;
+            if (t.length < 8) return null;
+
+            Employee e = new Employee();
+            e.setFirstName(t[0]);
+            e.setLastName(t[1]);
+            e.setDepartment(t[2]);
+            e.setPosition(t[3]);
+            e.setEmail(t[4]);
+            e.setPhone(t[5]);
+            e.setAddress(t[6]);
+            e.setDob(parseDate(t[7]));
+
+            return e;
+
+        } catch (Exception e) {
+            return null;
+        }
     }
 
-    private static int counter = 1;
+    // ================= VALIDATION =================
+    private boolean validate(Employee e) {
+
+        if (isBlank(e.getFirstName())) return false;
+        if (isBlank(e.getEmail()) || !e.getEmail().contains("@")) return false;
+
+        // Indian phone rule
+        if (!e.getPhone().matches("[6-9]\\d{9}")) return false;
+
+        if (e.getDob() == null) return false;
+
+        // DB duplicate
+        if (employeeDAO.existsByDobAndPhone(e.getDob(), e.getPhone()))
+            return false;
+
+        return true;
+    }
+
+    // ================= DUPLICATE =================
+    private boolean isDuplicate(Employee e, Set<String> set) {
+
+        String key = e.getDob() + "|" + e.getPhone();
+
+        if (set.contains(key)) return true;
+
+        set.add(key);
+        return false;
+    }
+
+    // ================= UTIL =================
+    private Date parseDate(String txt) {
+        try {
+            return DATE_FMT.parse(txt);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private boolean isBlank(String s) {
+        return s == null || s.trim().isEmpty();
+    }
 
     private String generateEmpId() {
-        return String.format("%03d", counter++);
+        int id = new Random().nextInt(1000);
+        return String.format("%03d", id);
+    }
+
+    private void logInvalid(String source, String line, String reason) {
+        System.out.println("[INVALID][" + source + "] " + reason + " -> " + line);
     }
 }
