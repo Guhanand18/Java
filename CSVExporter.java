@@ -4,7 +4,7 @@ import com.bnpparibas.model.Employee;
 import com.bnpparibas.util.HibernateUtil;
 
 import org.hibernate.Session;
-import org.hibernate.Query;   // ✅ Hibernate 4.3
+import org.hibernate.Query;
 
 import javax.swing.*;
 import java.io.File;
@@ -22,81 +22,40 @@ public class CsvExporter {
 
         String hql = "from Employee e " + crit.where + " order by e.empId";
 
-        Query query = session.createQuery(hql);   // ✅ no generics
+        Query query = session.createQuery(hql);
 
         for (int i = 0; i < crit.params.size(); i++) {
             query.setParameter(i, crit.params.get(i));
         }
 
-        List<Employee> rows = query.list();   // ⚠ raw list
-
+        List<Employee> rows = query.list();
         session.close();
 
         if (rows == null || rows.isEmpty()) {
-            JOptionPane.showMessageDialog(parent,
-                    "No data matches the current filter - nothing to export.",
-                    "Export", JOptionPane.INFORMATION_MESSAGE);
+            JOptionPane.showMessageDialog(parent, "No data to export");
             return;
         }
 
         JFileChooser chooser = new JFileChooser();
-        chooser.setDialogTitle("Save CSV Export");
-        chooser.setSelectedFile(new File("employees_export.csv"));
+        chooser.setSelectedFile(new File("employees.csv"));
 
         if (chooser.showSaveDialog(parent) != JFileChooser.APPROVE_OPTION) return;
 
-        File outFile = chooser.getSelectedFile();
-
         try {
-            PrintWriter pw = new PrintWriter(outFile);
+            PrintWriter pw = new PrintWriter(chooser.getSelectedFile());
 
-            // Header
-            pw.println("Emp_ID,First Name,Last Name,Department,Position,Email,Phone,Address,DOB,Hire Date,Status,Created By,Import ID,File Name");
+            pw.println("Emp_ID,First Name");
 
             for (Employee e : rows) {
-
-                pw.printf("%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s%n",
-                        esc(e.getEmpId()),
-                        esc(e.getFirstName()),
-                        esc(e.getLastName()),
-                        esc(e.getDepartment()),
-                        esc(e.getPosition()),
-                        esc(e.getEmail()),
-                        esc(e.getPhone()),
-                        esc(e.getAddress()),
-                        e.getDob() == null ? "" : DATE_FMT.format(e.getDob()),
-                        e.getHireDate() == null ? "" : DATE_FMT.format(e.getHireDate()),
-                        esc(e.getStatus()),
-                        esc(e.getCreatedby()),
-                        e.getImportId() == null ? "" : e.getImportId().toString(),
-                        esc(e.getFilename())
-                );
+                pw.println(e.getEmpId() + "," + e.getFirstName());
             }
 
             pw.close();
 
-            JOptionPane.showMessageDialog(parent,
-                    "Export successful! " + rows.size() + " rows written to:\n" + outFile.getAbsolutePath(),
-                    "Export", JOptionPane.INFORMATION_MESSAGE);
+            JOptionPane.showMessageDialog(parent, "Export successful");
 
-        } catch (Exception ex) {
-            JOptionPane.showMessageDialog(parent,
-                    "Error while exporting CSV:\n" + ex.getMessage(),
-                    "Export Error", JOptionPane.ERROR_MESSAGE);
+        } catch (Exception e) {
+            JOptionPane.showMessageDialog(parent, "Export error");
         }
-    }
-
-    // ================= CSV ESCAPE =================
-    private static String esc(String v) {
-
-        if (v == null) return "";
-
-        String e = v.replace("\"", "\"\"");
-
-        if (e.contains(",") || e.contains("\"") || e.contains("\n") || e.contains("\r")) {
-            return "\"" + e + "\"";
-        }
-
-        return e;
     }
 }
