@@ -1,7 +1,7 @@
 package com.bnpparibas.service;
 
 import org.hibernate.Session;
-import org.hibernate.query.Query;
+import org.hibernate.Query;   // ✅ NOTE: old import
 
 import com.bnpparibas.model.User;
 import com.bnpparibas.util.HibernateUtil;
@@ -13,15 +13,14 @@ public class LoginService {
 
         Session session = HibernateUtil.getSessionFactory().openSession();
 
-        Query<User> query = session.createQuery(
-                "FROM User WHERE username = :u AND password = :p",
-                User.class
+        Query query = session.createQuery(
+                "FROM User WHERE username = :u AND password = :p"
         );
 
         query.setParameter("u", username);
         query.setParameter("p", password);
 
-        User user = query.uniqueResult();
+        User user = (User) query.uniqueResult();  // ✅ casting required
 
         session.close();
 
